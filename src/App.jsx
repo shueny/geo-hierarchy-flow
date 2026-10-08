@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import GlobeMap from "./components/GlobeMap";
 import HierarchyFlow from "./components/HierarchyFlow";
+import HallView from "./components/HallView";
 import Icon from "./components/Icon";
 import { Segmented, StatusBadge, SidePanel } from "./components/ui";
-import { COUNTRIES, ALL_SITES, HIGHLIGHT_NUMERIC, STATUSES, findSite, countRacks } from "./data/sites";
+import { COUNTRIES, ALL_SITES, HIGHLIGHT_NUMERIC, STATUSES, findSite, findHall, countRacks } from "./data/sites";
 import { useLang } from "./i18n";
 
 const LAYOUTS = ["A", "B", "C"];
@@ -53,6 +54,7 @@ const SiteSummary = ({ site }) => {
         <StatusBadge status={site.status}>{t(`status.${site.status}`)}</StatusBadge>
       </div>
       <div className="muted">{t("count.siteDetail", { rooms: site.rooms.length, racks: countRacks(site) })}</div>
+      <div className="muted small">{t("panel.hint")}</div>
     </div>
   );
 };
@@ -221,8 +223,15 @@ const App = () => {
   const [layout, setLayoutState] = useState(readLayout);
   const [mode, setMode] = useState("3d");
   const [detail, setDetail] = useState(null);
+  const [hallId, setHallId] = useState(null);
+  const hallCtx = hallId ? findHall(hallId) : null;
   const setLayout = (v) => { writeLayout(v); setLayoutState(v); };
-  const openDetail = useCallback((kind, entity) => setDetail({ kind, entity }), []);
+  // halls open the 3D room; racks open the detail panel
+  const openDetail = useCallback((kind, entity) => {
+    if (kind === "room") setHallId(entity.id);
+    else setDetail({ kind, entity });
+  }, []);
+  const closeHall = useCallback(() => setHallId(null), []);
   const closeDetail = useCallback(() => setDetail(null), []);
   const props = { mode, setMode, openDetail };
 
@@ -259,6 +268,7 @@ const App = () => {
       </main>
       <footer className="muted small footer">{t("footer")}</footer>
       <DetailPanel detail={detail} onClose={closeDetail} />
+      {hallCtx && <HallView site={hallCtx.site} hall={hallCtx.hall} onClose={closeHall} />}
     </div>
   );
 };

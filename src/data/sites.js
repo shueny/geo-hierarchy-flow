@@ -124,4 +124,13 @@ export const HIGHLIGHT_NUMERIC = new Set(COUNTRIES.map((c) => c.numeric).filter(
 
 export const findSite = (id) => ALL_SITES.find((s) => s.id === id) || null;
 
+/** { site, hall } for a hall id, or null. */
+export const findHall = (hallId) => {
+  for (const site of ALL_SITES) {
+    const hall = site.rooms.find((r) => r.id === hallId);
+    if (hall) return { site, hall };
+  }
+  return null;
+};
+
 export const countRacks = (s) => s.rooms.reduce((n, r) => n + r.racks.length, 0);

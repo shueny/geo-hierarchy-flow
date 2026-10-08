@@ -151,12 +151,66 @@ p { margin: 2px 0 0; }
 
 .footer { margin-top: 16px; }
 
+
+/* ── 3D hall view ── */
+.hallview { position: fixed; inset: 0; z-index: 40; display: flex; flex-direction: column; background: var(--bg); }
+.hallview__head { display: flex; align-items: center; gap: 12px; padding: 12px 24px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.hallview__body { position: relative; flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 320px; }
+.hallview__scene { position: relative; min-height: 0; }
+.hallview__side { overflow: auto; padding: 16px; background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; gap: 20px; }
+.hallview__side h3 { margin: 0 0 8px; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.hallview__notice {
+  position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); margin: 0; z-index: 2;
+  max-width: min(520px, calc(100% - 360px)); padding: 0; border-radius: 8px;
+  background: rgba(29, 36, 51, 0.92); color: #fff; font-size: 13px; text-align: center; pointer-events: none;
+}
+.hallview__notice:not(:empty) { padding: 8px 14px; }
+
+.hall-scene { position: relative; width: 100%; height: 100%; overflow: hidden; }
+.hall-scene__canvas { position: absolute; inset: 0; touch-action: none; }
+.hall-scene__labels { position: absolute; inset: 0; pointer-events: none; }
+.hall-scene--fallback { display: grid; place-items: center; padding: 24px; text-align: center; color: var(--muted); }
+.hall-label {
+  position: absolute; left: 0; top: 0; margin: -12px 0 0 -30px; width: 60px; text-align: center;
+  font-size: 11px; font-weight: 600; padding: 1px 4px; border-radius: 4px;
+  background: rgba(29, 36, 51, 0.85); color: #fff; opacity: 0; transition: opacity 0.12s; white-space: nowrap;
+}
+.hall-label.is-visible { opacity: 1; }
+.hall-label.is-selected { background: var(--primary); }
+
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0 0 10px; }
+.stats div { background: var(--surface-2); border-radius: 8px; padding: 8px 10px; }
+.stats dt { font-size: 11px; color: var(--muted); }
+.stats dd { margin: 2px 0 0; font-size: 16px; font-weight: 600; }
+.stats--rack { grid-template-columns: repeat(2, 1fr); margin-top: 10px; }
+.stats--rack dd { font-size: 14px; }
+.legend--wrap { flex-wrap: wrap; }
+.rackcard__title { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600; }
+.u-bar { height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; margin-bottom: 12px; }
+.u-bar div { height: 100%; background: var(--primary); }
+.btn--block { width: 100%; justify-content: center; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; border-color: var(--border); color: var(--muted); }
+.controls { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.controls .btn--block { margin-top: 4px; }
+.check { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.ramp { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); width: 100%; }
+.ramp i { flex: 1; height: 8px; border-radius: 4px; background: linear-gradient(90deg, #cfe0ff, #1d4ed8); }
+.howto { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+
+@media (max-width: 900px) {
+  .hallview__head { padding: 10px 16px; flex-wrap: wrap; }
+  .hallview__body { grid-template-columns: 1fr; grid-template-rows: minmax(320px, 55vh) auto; overflow: auto; }
+  .hallview__side { border-left: 0; border-top: 1px solid var(--border); overflow: visible; }
+  .hallview__notice { max-width: calc(100% - 32px); top: 12px; bottom: auto; }
+}
+
 @media (max-width: 640px) {
   .app { padding: 12px 16px; }
   .globe--tall, .empty { height: 420px; }
   .stage { height: 520px; }
   .flow--side, .flow--full { height: 480px; }
   .legend { display: none; }
+  .split__mini { width: 150px; height: 110px; top: 8px; right: 8px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
