@@ -55,6 +55,10 @@ flowchart LR
 
 Country borders: [Natural Earth](https://www.naturalearthdata.com/) via [world-atlas](https://github.com/topojson/world-atlas). Built with [three.js](https://threejs.org/), [React Flow](https://reactflow.dev/) and [Vite](https://vite.dev/).
 
+## License
+
+[MIT](LICENSE)
+
 ---
 
 ## 中文
@@ -89,3 +93,7 @@ npm run build     # 靜態網站輸出到 dist/
 - 世界視角下相近的據點會重疊（台北兩個據點相距約 15 公里），之後可加群聚。
 - 新加坡在 110m 資料集裡沒有多邊形，所以不會上色。
 - 地球儀需要 WebGL；不支援時地圖區會顯示說明，圖譜檢視照常可用。
+
+### 授權
+
+[MIT](LICENSE)

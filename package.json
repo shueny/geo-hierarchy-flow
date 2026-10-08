@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Multi-site data center explorer: a WebGL globe that unfolds into a flat map, paired with a React Flow hierarchy (country → site → hall → rack).",
+  "license": "MIT",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
