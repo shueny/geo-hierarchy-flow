@@ -17,7 +17,8 @@ All data is invented.
   - **Graph first**: a global hierarchy graph with a mini globe as navigator; selection syncs both ways.
 - **3D data hall**: click a hall in any graph to walk into it — raised floor with 600 mm tiles, hot/cold aisles with perforated tiles and a glass containment roof, cooling units, PDUs and overhead cable trays. Walls cut away automatically toward the camera.
 - **3D hall ↔ 2D floor plan**: one toggle switches the hall between the 3D scene and a React Flow floor plan of the same layout (tiles, cold aisle, cooling, PDUs, door, each rack's front edge). Both edit the same layout, so a rack moved in one view is already moved in the other.
-- **Movable racks**: in either view, drag a rack to another tile (it snaps to the grid and turns red where it doesn't fit), press **R** to rotate it 90°. Collisions with racks, cooling units, PDUs and walls are blocked. The layout is saved per hall in the browser; **Reset layout** restores the default plan.
+- **Rotate the whole room**: in 3D, drag anywhere — floor or racks — to orbit the room; right-drag pans, scroll zooms.
+- **Movable racks**: in 3D turn on **Move racks** (then dragging a rack moves it and the camera holds still; dragging the floor still orbits); in 2D just drag. Either way, drag a rack to another tile (it snaps to the grid and turns red where it doesn't fit), press **R** to rotate it 90°. Collisions with racks, cooling units, PDUs and walls are blocked. The layout is saved per hall in the browser; **Reset layout** restores the default plan.
 - **Rack details**: click a rack to see U usage, power, device count and status; colour racks by status or by U usage; switch between 3D and top view.
 - **中文 / English** toggle. The choice is remembered in the browser.
 
@@ -82,7 +83,8 @@ Country borders: [Natural Earth](https://www.naturalearthdata.com/) via [world-a
   - **圖譜為主**：全球層級圖譜為主，右上小地球導覽，兩邊選取互相同步。
 - **3D 機房**：在任何圖譜上點「機房」就進入 3D 機房——600 mm 高架地板、冷熱通道（有孔地板＋玻璃頂封閉冷通道）、空調機、PDU、上方走線架；朝向鏡頭的牆會自動剖開。
 - **3D 機房 ↔ 2D 平面圖**：一個切換鍵在 3D 場景與 React Flow 平面圖之間切換，平面圖畫的是同一份配置（地板格、冷通道、空調、PDU、門、每座機櫃的正面）。兩邊改的是同一份資料，在一邊移動的機櫃，切到另一邊已經在新位置。
-- **機櫃可以移動**：兩種檢視都可以拖曳機櫃到其他地板格（自動對齊，放不下會變紅），按 **R** 旋轉 90°；會擋下撞到機櫃、空調、PDU 或牆壁的位置。配置依機房存在瀏覽器，「還原配置」回到預設。
+- **整個機房可用滑鼠旋轉**：3D 時拖曳任何地方（地板或機櫃）都是旋轉整個機房；右鍵拖曳平移、滾輪縮放。
+- **機櫃可以移動**：3D 時先開啟「移動機櫃」（這時拖曳機櫃是移動、鏡頭不動，拖曳地板仍可旋轉）；2D 直接拖曳。拖曳機櫃到其他地板格（自動對齊，放不下會變紅），按 **R** 旋轉 90°；會擋下撞到機櫃、空調、PDU 或牆壁的位置。配置依機房存在瀏覽器，「還原配置」回到預設。
 - **機櫃明細**：點機櫃看 U 使用、功率、設備數、狀態；機櫃可依狀態或 U 使用率上色；3D 與俯視切換。
 - **中文／English** 切換，瀏覽器會記住上次的選擇。
 

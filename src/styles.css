@@ -189,6 +189,7 @@ p { margin: 2px 0 0; }
 .u-bar { height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; margin-bottom: 12px; }
 .u-bar div { height: 100%; background: var(--primary); }
 .btn--block { width: 100%; justify-content: center; }
+.btn--toggle.is-on { background: var(--primary); border-color: var(--primary); color: #fff; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; border-color: var(--border); color: var(--muted); }
 .controls { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
 .controls .btn--block { margin-top: 4px; }

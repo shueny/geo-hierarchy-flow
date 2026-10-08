@@ -108,19 +108,21 @@ const hasWebGL = () => {
  * @param colorMode    "status" | "usage" — colour of each rack's top panel
  * @param showLabels   show every rack's name, not only hovered/selected
  * @param view         "perspective" | "top" — camera preset (animates on change)
+ * @param editable     false: every drag orbits the whole room (click still selects);
+ *                     true: dragging a rack moves it, dragging the floor still orbits
  * @param onSelect     (id | null) => void
  * @param onMove       (id, {x,z,rot}) => void — only called for valid drops
  * @param onBlocked    () => void — a drop landed somewhere it can't go
  */
 const HallScene = ({
-  layout, racks, selectedId, colorMode = "status", showLabels = false, view = "perspective",
+  layout, racks, selectedId, colorMode = "status", showLabels = false, view = "perspective", editable = false,
   onSelect, onMove, onBlocked, fallback, className = "",
 }) => {
   const hostRef = useRef(null);
   const labelsRef = useRef(null);
   const apiRef = useRef(null);
   const live = useRef({});
-  live.current = { layout, racks, selectedId, colorMode, showLabels, onSelect, onMove, onBlocked };
+  live.current = { layout, racks, selectedId, colorMode, showLabels, editable, onSelect, onMove, onBlocked };
   const webgl = useRef(hasWebGL()).current;
 
   // —— build the room once per hall (the parent remounts via key) ——
@@ -332,6 +334,11 @@ const HallScene = ({
         controls.target.copy(p.target);
         return;
       }
+      // flush leftover orbit inertia first: controls.update() is paused during the tween,
+      // so momentum from the last drag would otherwise kick in once it ends and skew the preset
+      controls.enableDamping = false;
+      controls.update();
+      controls.enableDamping = true;
       tween = { t0: performance.now(), dur: 900, fromPos: camera.position.clone(), fromTarget: controls.target.clone(), toPos: p.pos, toTarget: p.target };
     };
     setView("perspective", false);
@@ -361,16 +368,19 @@ const HallScene = ({
     let hoverId = null;
     const el = renderer.domElement;
 
+    // Runs in the capture phase on the host, i.e. before OrbitControls sees the event.
+    // Grabbing a rack in edit mode stops the event there, so the camera never starts
+    // orbiting; every other press falls through to OrbitControls and rotates the room.
     const onDown = (ev) => {
-      if (ev.button !== 0) return;
+      if (ev.button !== 0 || ev.target !== el) return;
       setRay(ev);
       const id = rackUnder();
-      const tile = grabTile();
       press = { id, start: [ev.clientX, ev.clientY], dragging: false };
-      if (id && tile) {
+      const tile = id && live.current.editable ? grabTile() : null;
+      if (tile) {
         const p = live.current.layout.racks[id];
         press.grab = { dx: p.x - tile.x, dz: p.z - tile.z };
-        controls.enabled = false; // pressing a rack never orbits the camera
+        ev.stopPropagation();
         el.setPointerCapture(ev.pointerId);
       }
     };
@@ -395,13 +405,12 @@ const HallScene = ({
         return;
       }
       hoverId = rackUnder();
-      el.style.cursor = hoverId ? "grab" : "";
+      el.style.cursor = hoverId ? (live.current.editable ? "grab" : "pointer") : "";
     };
     const onUp = (ev) => {
       if (!press) return;
       const p = press;
       press = null;
-      controls.enabled = true;
       marker.visible = false;
       if (el.hasPointerCapture(ev.pointerId)) el.releasePointerCapture(ev.pointerId);
       el.style.cursor = "";
@@ -422,7 +431,7 @@ const HallScene = ({
       if (Math.hypot(ev.clientX - p.start[0], ev.clientY - p.start[1]) <= 4) cb.onSelect?.(p.id || null);
     };
     const onLeave = () => { hoverId = null; };
-    el.addEventListener("pointerdown", onDown);
+    host.addEventListener("pointerdown", onDown, { capture: true });
     el.addEventListener("pointermove", onMovePointer);
     el.addEventListener("pointerup", onUp);
     el.addEventListener("pointercancel", onUp);
@@ -475,7 +484,7 @@ const HallScene = ({
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
-      el.removeEventListener("pointerdown", onDown);
+      host.removeEventListener("pointerdown", onDown, { capture: true });
       el.removeEventListener("pointermove", onMovePointer);
       el.removeEventListener("pointerup", onUp);
       el.removeEventListener("pointercancel", onUp);

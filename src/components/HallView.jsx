@@ -44,6 +44,8 @@ const HallView = ({ site, hall, onClose }) => {
   const [colorMode, setColorMode] = useState("status");
   const [mode, setMode] = useState("3d"); // "3d" scene or "2d" React Flow plan — same layout state
   const [view, setView] = useState("perspective");
+  // 3D only: off = any drag orbits the whole room; on = dragging a rack moves it
+  const [editing, setEditing] = useState(false);
   const [showLabels, setShowLabels] = useState(false);
   const [notice, setNotice] = useState("");
   const noticeTimer = useRef(0);
@@ -122,6 +124,19 @@ const HallView = ({ site, hall, onClose }) => {
         </nav>
         <span className="muted small">{hall.floor}</span>
         <span className="spacer" />
+        {mode === "3d" && (
+          <button
+            type="button"
+            className={`btn btn--toggle${editing ? " is-on" : ""}`}
+            aria-pressed={editing}
+            onClick={() => {
+              setEditing((v) => !v);
+              flash(t(editing ? "hall.editOffHint" : "hall.editOnHint"));
+            }}
+          >
+            <Icon name="move" />{t("hall.edit")}
+          </button>
+        )}
         <Segmented
           label={t("hall.mode")}
           value={mode}
@@ -154,6 +169,7 @@ const HallView = ({ site, hall, onClose }) => {
           colorMode={colorMode}
           showLabels={showLabels}
           view={view}
+          editable={editing}
           onSelect={setSelectedId}
           onMove={onMove}
           onBlocked={() => flash(t("hall.blocked"))}
@@ -239,7 +255,7 @@ const HallView = ({ site, hall, onClose }) => {
           <section>
             <h3>{t("hall.howto")}</h3>
             <ul className="howto muted small">
-              <li>{t("hall.tipDrag")}</li>
+              <li>{t(mode === "3d" ? "hall.tipDrag3d" : "hall.tipDrag")}</li>
               <li>{t("hall.tipRotate")}</li>
               <li>{t(mode === "3d" ? "hall.tipCamera" : "hall.tipCamera2d")}</li>
               <li>{t("hall.tipAisles")}</li>
