@@ -26,7 +26,7 @@ const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.z < b.z + b.d
 
 /**
  * Default floor plan for a hall with `rackIds` (in display order).
- * Returns { width, depth, racks: {id: {x, z, rot}}, fixtures: [...], coldAisles: [...] }.
+ * Returns { width, depth, racks: {id: {x, z, rot}}, fixtures: [...], coldAisles: [...], trays: [...] }.
  */
 export const defaultLayout = (rackIds) => {
   const rows = Math.max(1, Math.ceil(rackIds.length / ROW_LEN));
@@ -61,7 +61,13 @@ export const defaultLayout = (rackIds) => {
     coldAisles.push(rect(ROW_X0, rowZ(p * 2) + RACK_D, ROW_LEN + 1, AISLE));
   }
 
-  return { width, depth, racks, fixtures, coldAisles };
+  // overhead cable trays follow the planned rows; they are infrastructure and stay put when racks move
+  const trays = [];
+  for (let r = 0; r < rows; r += 1) {
+    trays.push(rect(ROW_X0, rowZ(r), Math.min(ROW_LEN, rackIds.length - r * ROW_LEN), RACK_D));
+  }
+
+  return { width, depth, racks, fixtures, coldAisles, trays };
 };
 
 /** Rectangle a rack covers at a given position. */

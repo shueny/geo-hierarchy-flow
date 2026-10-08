@@ -230,13 +230,10 @@ const HallScene = ({
       scene.add(roof);
     });
     const trayMat = keep(new THREE.MeshStandardMaterial({ color: "#f2c94c", roughness: 0.5, metalness: 0.3 }));
-    const rowsZ = [...new Set(Object.values(L.racks).map((p) => p.z))];
-    rowsZ.forEach((z) => {
-      const xs = Object.values(L.racks).filter((p) => p.z === z).map((p) => p.x);
-      const x0 = Math.min(...xs);
-      const len = (Math.max(...xs) - x0 + 1) * TILE;
+    L.trays.forEach((r) => {
+      const len = r.w * TILE;
       const tray = new THREE.Mesh(keep(new THREE.BoxGeometry(len, 0.08, 0.3)), trayMat);
-      tray.position.set(wx(x0) + len / 2, TRAY_Y, wz(z) + TILE);
+      tray.position.set(wx(r.x) + len / 2, TRAY_Y, wz(r.z) + (r.d * TILE) / 2);
       tray.castShadow = true;
       scene.add(tray);
     });

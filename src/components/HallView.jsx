@@ -3,6 +3,7 @@
 // hall in localStorage so a rearranged floor survives a reload.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import HallScene from "./HallScene";
+import HallFlow from "./HallFlow";
 import Icon from "./Icon";
 import { Segmented, StatusBadge } from "./ui";
 import { defaultLayout, moveRack, restoreLayout, rotateRack } from "./hallLayout";
@@ -41,6 +42,7 @@ const HallView = ({ site, hall, onClose }) => {
   const [layout, setLayout] = useState(() => restoreLayout(base, load(hall.id)));
   const [selectedId, setSelectedId] = useState(null);
   const [colorMode, setColorMode] = useState("status");
+  const [mode, setMode] = useState("3d"); // "3d" scene or "2d" React Flow plan — same layout state
   const [view, setView] = useState("perspective");
   const [showLabels, setShowLabels] = useState(false);
   const [notice, setNotice] = useState("");
@@ -120,12 +122,30 @@ const HallView = ({ site, hall, onClose }) => {
         </nav>
         <span className="muted small">{hall.floor}</span>
         <span className="spacer" />
+        <Segmented
+          label={t("hall.mode")}
+          value={mode}
+          onChange={setMode}
+          options={[{ key: "3d", label: t("hall.mode3d") }, { key: "2d", label: t("hall.mode2d") }]}
+        />
         <button ref={closeRef} type="button" className="btn" onClick={onClose}>
           <Icon name="close" />{t("close")}
         </button>
       </header>
 
       <div className="hallview__body">
+        {mode === "2d" ? (
+          <HallFlow
+            layout={layout}
+            racks={racksById}
+            selectedId={selectedId}
+            colorMode={colorMode}
+            onSelect={setSelectedId}
+            onMove={onMove}
+            onBlocked={() => flash(t("hall.blocked"))}
+            className="hallview__scene"
+          />
+        ) : (
         <HallScene
           key={hall.id}
           layout={layout}
@@ -140,6 +160,7 @@ const HallView = ({ site, hall, onClose }) => {
           fallback={t("map.noWebgl")}
           className="hallview__scene"
         />
+        )}
         <p className="hallview__notice" role="status" aria-live="polite">{notice}</p>
 
         <aside className="hallview__side">
@@ -187,13 +208,15 @@ const HallView = ({ site, hall, onClose }) => {
 
           <section className="controls">
             <h3>{t("hall.display")}</h3>
-            <Segmented
-              label={t("hall.view")}
-              size="sm"
-              value={view}
-              onChange={setView}
-              options={[{ key: "perspective", label: t("hall.view3d") }, { key: "top", label: t("hall.viewTop") }]}
-            />
+            {mode === "3d" && (
+              <Segmented
+                label={t("hall.view")}
+                size="sm"
+                value={view}
+                onChange={setView}
+                options={[{ key: "perspective", label: t("hall.view3d") }, { key: "top", label: t("hall.viewTop") }]}
+              />
+            )}
             <Segmented
               label={t("hall.colorBy")}
               size="sm"
@@ -204,10 +227,12 @@ const HallView = ({ site, hall, onClose }) => {
             {colorMode === "usage" && (
               <div className="ramp" aria-hidden="true"><span>0%</span><i /><span>100%</span></div>
             )}
-            <label className="check">
-              <input type="checkbox" checked={showLabels} onChange={(e) => setShowLabels(e.target.checked)} />
-              {t("hall.showLabels")}
-            </label>
+            {mode === "3d" && (
+              <label className="check">
+                <input type="checkbox" checked={showLabels} onChange={(e) => setShowLabels(e.target.checked)} />
+                {t("hall.showLabels")}
+              </label>
+            )}
             <button type="button" className="btn btn--block" onClick={reset} disabled={!moved}>{t("hall.reset")}</button>
           </section>
 
@@ -216,7 +241,7 @@ const HallView = ({ site, hall, onClose }) => {
             <ul className="howto muted small">
               <li>{t("hall.tipDrag")}</li>
               <li>{t("hall.tipRotate")}</li>
-              <li>{t("hall.tipCamera")}</li>
+              <li>{t(mode === "3d" ? "hall.tipCamera" : "hall.tipCamera2d")}</li>
               <li>{t("hall.tipAisles")}</li>
             </ul>
           </section>

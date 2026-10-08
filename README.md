@@ -16,7 +16,8 @@ All data is invented.
   - **Drill-down**: the camera flies to the site, then the view becomes that site's graph.
   - **Graph first**: a global hierarchy graph with a mini globe as navigator; selection syncs both ways.
 - **3D data hall**: click a hall in any graph to walk into it — raised floor with 600 mm tiles, hot/cold aisles with perforated tiles and a glass containment roof, cooling units, PDUs and overhead cable trays. Walls cut away automatically toward the camera.
-- **Movable racks**: drag a rack to another tile (it snaps to the grid and turns red where it doesn't fit), press **R** to rotate it 90°. Collisions with racks, cooling units, PDUs and walls are blocked. The layout is saved per hall in the browser; **Reset layout** restores the default plan.
+- **3D hall ↔ 2D floor plan**: one toggle switches the hall between the 3D scene and a React Flow floor plan of the same layout (tiles, cold aisle, cooling, PDUs, door, each rack's front edge). Both edit the same layout, so a rack moved in one view is already moved in the other.
+- **Movable racks**: in either view, drag a rack to another tile (it snaps to the grid and turns red where it doesn't fit), press **R** to rotate it 90°. Collisions with racks, cooling units, PDUs and walls are blocked. The layout is saved per hall in the browser; **Reset layout** restores the default plan.
 - **Rack details**: click a rack to see U usage, power, device count and status; colour racks by status or by U usage; switch between 3D and top view.
 - **中文 / English** toggle. The choice is remembered in the browser.
 
@@ -43,7 +44,7 @@ flowchart LR
 
 - **Morph.** The mesh is a 256×128 grid whose `uv` is (longitude, latitude). The vertex shader computes the sphere position `s` and the plane position `p = (lon, lat, 1)` and outputs `mix(s, p, uMorph)`. `globeMath.js` mirrors the same formula in JavaScript so markers stay on the surface.
 - **Borders.** Natural Earth 110m (from `world-atlas`) is drawn into a 4096×2048 equirectangular canvas used as the texture. Rings that cross the antimeridian (Russia, Fiji) are unwrapped first. Otherwise they fill as a band across the whole map.
-- **Hall floor plan.** `hallLayout.js` is pure logic in tile units: the default hot/cold aisle plan, rack footprints (1 × 2 tiles, 2 × 1 when turned), collision checks and restoring a saved layout as a set (so swapped racks restore correctly). `HallScene.jsx` only draws it and turns drags into "move rack to tile" requests. Drags are computed on the plane of the rack tops, so the part you grabbed stays under the cursor.
+- **Hall floor plan.** `hallLayout.js` is pure logic in tile units: the default hot/cold aisle plan, rack footprints (1 × 2 tiles, 2 × 1 when turned), collision checks and restoring a saved layout as a set (so swapped racks restore correctly). `HallScene.jsx` (three.js) and `HallFlow.jsx` (React Flow, node position = tile × 44 px) only draw it and turn drags into "move rack to tile" requests, so the two views can never disagree. Drags are computed on the plane of the rack tops, so the part you grabbed stays under the cursor.
 - **Graph layout.** Four fixed levels with fixed node widths, so a small hand-written tidy tree replaces dagre/elk. Racks wrap into a 4-column grid under their hall.
 
 ## Deploy
@@ -80,7 +81,8 @@ Country borders: [Natural Earth](https://www.naturalearthdata.com/) via [world-a
   - **下鑽換景**：鏡頭先飛到據點，再整頁換成該據點的圖譜。
   - **圖譜為主**：全球層級圖譜為主，右上小地球導覽，兩邊選取互相同步。
 - **3D 機房**：在任何圖譜上點「機房」就進入 3D 機房——600 mm 高架地板、冷熱通道（有孔地板＋玻璃頂封閉冷通道）、空調機、PDU、上方走線架；朝向鏡頭的牆會自動剖開。
-- **機櫃可以移動**：拖曳機櫃到其他地板格（自動對齊，放不下會變紅），按 **R** 旋轉 90°；會擋下撞到機櫃、空調、PDU 或牆壁的位置。配置依機房存在瀏覽器，「還原配置」回到預設。
+- **3D 機房 ↔ 2D 平面圖**：一個切換鍵在 3D 場景與 React Flow 平面圖之間切換，平面圖畫的是同一份配置（地板格、冷通道、空調、PDU、門、每座機櫃的正面）。兩邊改的是同一份資料，在一邊移動的機櫃，切到另一邊已經在新位置。
+- **機櫃可以移動**：兩種檢視都可以拖曳機櫃到其他地板格（自動對齊，放不下會變紅），按 **R** 旋轉 90°；會擋下撞到機櫃、空調、PDU 或牆壁的位置。配置依機房存在瀏覽器，「還原配置」回到預設。
 - **機櫃明細**：點機櫃看 U 使用、功率、設備數、狀態；機櫃可依狀態或 U 使用率上色；3D 與俯視切換。
 - **中文／English** 切換，瀏覽器會記住上次的選擇。
 

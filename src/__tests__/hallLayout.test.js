@@ -20,6 +20,17 @@ describe("defaultLayout", () => {
     expect(rackRect(l.racks[`R${ROW_LEN + 1}`]).z).toBe(aisle.z + aisle.d); // row 2 starts after it
   });
 
+  test("cable trays follow the planned rows and survive rack moves", () => {
+    const l = defaultLayout(ids(7)); // a full row + a row with one rack
+    expect(l.trays).toEqual([
+      { x: 4, z: l.racks.R1.z, w: 6, d: 2 },
+      { x: 4, z: l.racks.R7.z, w: 1, d: 2 },
+    ]);
+    const moved = moveRack(l, "R1", { x: 4, z: l.depth - 2, rot: 0 });
+    expect(moved.trays).toBe(l.trays);
+    expect(restoreLayout(l, { R1: { x: 4, z: l.depth - 2, rot: 0 } }).trays).toBe(l.trays);
+  });
+
   test("has cooling units and one PDU per row", () => {
     const l = defaultLayout(ids(14));
     expect(l.fixtures.filter((f) => f.kind === "crac").length).toBeGreaterThan(0);
