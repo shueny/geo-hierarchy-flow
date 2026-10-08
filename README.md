@@ -6,6 +6,8 @@ A demo for browsing data centers spread across many countries. A WebGL globe **u
 
 All data is invented.
 
+**Live demo:** https://shueny.github.io/geo-hierarchy-flow/
+
 ## Features
 
 - **3D globe ↔ 2D map.** A single mesh morphs between a sphere and a plane in the vertex shader, so switching modes is an unfolding animation rather than a swap between two maps. Markers and labels ride the same surface.
@@ -64,6 +66,8 @@ Country borders: [Natural Earth](https://www.naturalearthdata.com/) via [world-a
 ## 中文
 
 一個跨國機房據點的瀏覽 demo：WebGL **地球儀可以連續攤平成 2D 地圖**，再用 React Flow 往下鑽：**國家 → 據點 → 機房 → 機櫃**。所有資料都是虛構的。
+
+**線上 demo：** https://shueny.github.io/geo-hierarchy-flow/
 
 ### 功能
 

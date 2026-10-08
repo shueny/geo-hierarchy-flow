@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from "
 import { messages } from "./messages";
 
 const LangContext = createContext(null);
-const STORAGE_KEY = "dc-globe-demo.lang";
+const STORAGE_KEY = "geo-hierarchy-flow.lang";
 
 const readStored = () => {
   try {
