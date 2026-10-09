@@ -11,12 +11,12 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { feature } from "topojson-client";
 import world from "world-atlas/countries-110m.json";
 import { LON0, surfacePoint, unwrapRing, easeInOutCubic } from "./globeMath";
+import { STATUS_COLOR } from "./colors";
+import { hasWebGL } from "./webgl";
 
 const FOV = 40;
 const GLOBE_DIST = 3.4;
 const FLAT_W = Math.PI * 2;
-
-export const STATUS_COLOR = { normal: "#2ab57d", warning: "#f5a524", critical: "#e5484d" };
 
 const buildTexture = (highlight) => {
   const W = 4096;
@@ -95,15 +95,6 @@ const fragmentShader = /* glsl */ `
     gl_FragColor = vec4(c.rgb * mix(light, 1.0, uMorph), 1.0);
   }
 `;
-
-const hasWebGL = () => {
-  try {
-    const c = document.createElement("canvas");
-    return !!(c.getContext("webgl2") || c.getContext("webgl"));
-  } catch {
-    return false;
-  }
-};
 
 /**
  * @param mode       "3d" | "2d"

@@ -1,108 +1,258 @@
-// 3D data hall: raised floor, cut-away walls, hot/cold aisles, cooling units,
-// PDUs, overhead cable trays — and racks you can drag to a new tile.
+// 3D data hall in react-three-fiber (see docs/decisions/0001-react-three-fiber-for-3d-scenes.md).
 //
-// Units are metres (1 tile = TILE = 0.6 m). The floor plan itself (positions,
-// collisions) lives in hallLayout.js; this file only draws it and turns pointer
-// gestures into "move rack X to tile (x, z)" requests for the parent to apply.
-import { useEffect, useRef } from "react";
-import * as THREE from "three";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+// The room is declared in JSX (hall3d/Room, hall3d/Rack); this file owns what changes:
+// pointer gestures, drag state, hover, and the camera. The floor plan itself (positions,
+// collisions) lives in hallLayout.js; this scene only draws it and turns gestures into
+// "move rack X to tile (x, z)" requests for the parent.
+//
+// Gestures:
+//   click                 select a rack (or nothing, on empty floor)
+//   drag, view mode       orbit the whole room — anywhere, racks included
+//   drag, edit mode       on a rack: move it (camera holds still); on the floor: orbit
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
+import { OrbitControls } from "@react-three/drei";
 import { TILE, canPlace, footprint } from "./hallLayout";
 import { easeInOutCubic } from "./globeMath";
-import { STATUS_COLOR } from "./GlobeMap";
+import { hasWebGL } from "./webgl";
+import { Room } from "./hall3d/Room";
+import { Rack } from "./hall3d/Rack";
+import SlimCanvas from "./hall3d/SlimCanvas";
+import { useHallAssets } from "./hall3d/useHallAssets";
+import { cameraPreset, rackTransform, rayToTile, roomFrame } from "./hall3d/units";
 
-const WALL_H = 3.0;
-const RACK_H = 2.0;
-const TRAY_Y = 2.45;
-const PX_PER_TILE = 64;
+const DRAG_THRESHOLD_PX = 4; // below this a press is a click, not a drag
 
-// U usage → light-to-dark blue ramp (sequential: more used = darker)
-const usageColor = (pct) => new THREE.Color().lerpColors(new THREE.Color("#cfe0ff"), new THREE.Color("#1d4ed8"), pct);
-
-const canvasTexture = (w, h, draw, repeat) => {
-  const c = document.createElement("canvas");
-  c.width = w;
-  c.height = h;
-  draw(c.getContext("2d"), w, h);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 8;
-  if (repeat) {
-    t.wrapS = THREE.RepeatWrapping;
-    t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(repeat[0], repeat[1]);
-  }
-  return t;
+// Footprint under a rack being carried: green where it fits, red where it doesn't.
+const DropMarker = ({ drag, frame }) => {
+  const { w, d } = footprint(drag.pos.rot);
+  const t = rackTransform(drag.pos, frame);
+  return (
+    <mesh position={[t.x, 0.005, t.z]} rotation-x={-Math.PI / 2}>
+      <planeGeometry args={[w * TILE, d * TILE]} />
+      <meshBasicMaterial color={drag.ok ? "#2ab57d" : "#e5484d"} transparent opacity={0.35} depthWrite={false} />
+    </mesh>
+  );
 };
 
-// raised floor: 600 mm tiles with seams; perforated tiles in the cold aisles
-const floorTexture = (layout) =>
-  canvasTexture(layout.width * PX_PER_TILE, layout.depth * PX_PER_TILE, (ctx, w, h) => {
-    ctx.fillStyle = "#d9dde3";
-    ctx.fillRect(0, 0, w, h);
-    layout.coldAisles.forEach((a) => {
-      for (let x = a.x; x < a.x + a.w; x += 1) {
-        for (let z = a.z; z < a.z + a.d; z += 1) {
-          const px = x * PX_PER_TILE;
-          const pz = z * PX_PER_TILE;
-          ctx.fillStyle = "#c6ccd5";
-          ctx.fillRect(px, pz, PX_PER_TILE, PX_PER_TILE);
-          ctx.fillStyle = "#8e98a6";
-          for (let i = 8; i < PX_PER_TILE - 4; i += 7) {
-            for (let j = 8; j < PX_PER_TILE - 4; j += 7) {
-              ctx.beginPath();
-              ctx.arc(px + i, pz + j, 1.8, 0, Math.PI * 2);
-              ctx.fill();
-            }
-          }
-        }
-      }
-    });
-    ctx.strokeStyle = "#a9b0ba";
-    ctx.lineWidth = 2;
-    for (let x = 0; x <= w; x += PX_PER_TILE) {
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+// Animates to the "3D" / "top" presets. OrbitControls keeps ownership of the camera otherwise.
+const CameraRig = ({ view, frame, controlsRef }) => {
+  const camera = useThree((s) => s.camera);
+  const invalidate = useThree((s) => s.invalidate);
+  const tween = useRef(null);
+  const placed = useRef(false);
+
+  useEffect(() => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+    const preset = cameraPreset(view, frame);
+    if (!placed.current) {
+      placed.current = true;
+      camera.position.copy(preset.pos);
+      controls.target.copy(preset.target);
+      controls.update();
+      invalidate();
+      return;
     }
-    for (let z = 0; z <= h; z += PX_PER_TILE) {
-      ctx.beginPath(); ctx.moveTo(0, z); ctx.lineTo(w, z); ctx.stroke();
+    // Flush leftover orbit inertia first, or momentum from a quick spin would kick in
+    // after the tween and skew the preset.
+    controls.enableDamping = false;
+    controls.update();
+    controls.enableDamping = true;
+    tween.current = {
+      t0: performance.now(), dur: 900,
+      fromPos: camera.position.clone(), fromTarget: controls.target.clone(),
+      toPos: preset.pos, toTarget: preset.target,
+    };
+    invalidate();
+  }, [view, frame, camera, controlsRef, invalidate]);
+
+  useFrame(() => {
+    const tw = tween.current;
+    const controls = controlsRef.current;
+    if (!tw || !controls) return;
+    const t = Math.min(1, (performance.now() - tw.t0) / tw.dur);
+    const k = easeInOutCubic(t);
+    camera.position.lerpVectors(tw.fromPos, tw.toPos, k);
+    controls.target.lerpVectors(tw.fromTarget, tw.toTarget, k);
+    camera.lookAt(controls.target);
+    if (t >= 1) tween.current = null;
+    else invalidate(); // frameloop is "demand": keep asking for frames while animating
+  });
+  return null;
+};
+
+const Scene = ({ layout, racks, selectedId, colorMode, showLabels, view, editable, onSelect, onMove, onBlocked }) => {
+  const { width, depth } = layout;
+  const frame = useMemo(() => roomFrame({ width, depth }), [width, depth]);
+  const assets = useHallAssets(layout);
+  const controls = useThree((s) => s.controls);
+  const gl = useThree((s) => s.gl);
+  const controlsRef = useRef();
+  const sunRef = useRef();
+  const press = useRef(null); // gesture in progress: { id, start, grab, dragging, pos, ok }
+  const [hoverId, setHoverId] = useState(null);
+  const [drag, setDrag] = useState(null); // { id, pos, ok, dropped } — what the carried rack shows
+
+  // a new layout means the drop (if any) has been applied: stop overriding the rack's position
+  useEffect(() => setDrag(null), [layout]);
+
+  // the shadow camera is configured through props after construction
+  const half = Math.max(frame.W, frame.D) * 0.7;
+  useLayoutEffect(() => sunRef.current.shadow.camera.updateProjectionMatrix(), [half]);
+
+  // cursor on the canvas only (not the whole page)
+  const carrying = !!drag && !drag.dropped;
+  useEffect(() => {
+    const el = gl.domElement;
+    el.style.cursor = carrying ? "grabbing" : hoverId ? (editable ? "grab" : "pointer") : "";
+    return () => { el.style.cursor = ""; };
+  }, [gl, carrying, hoverId, editable]);
+
+  // The browser can take a drag away without a pointerup (pointercancel: window switch, system
+  // gesture; lostpointercapture). R3F does not forward these to object handlers, so listen on the
+  // canvas itself — otherwise a rack drag that never ends leaves the camera locked (enabled = false).
+  useEffect(() => {
+    const el = gl.domElement;
+    const abort = () => {
+      if (!press.current?.grab) return; // only rack drags hold the camera
+      press.current = null;
+      if (controls) controls.enabled = true;
+      setDrag(null);
+    };
+    el.addEventListener("pointercancel", abort);
+    el.addEventListener("lostpointercapture", abort);
+    return () => {
+      el.removeEventListener("pointercancel", abort);
+      el.removeEventListener("lostpointercapture", abort);
+    };
+  }, [gl, controls]);
+
+  const endPress = (e) => {
+    const pr = press.current;
+    press.current = null;
+    if (controls) controls.enabled = true;
+    if (pr?.grab) {
+      try { e.target.releasePointerCapture(e.pointerId); } catch { /* already released */ }
     }
+    return pr;
+  };
+
+  const down = (e, id) => {
+    e.stopPropagation(); // only the nearest rack under the pointer reacts
+    if (e.button !== 0) return; // right-drag pans: leave it to OrbitControls
+    setDrag(null);
+    press.current = { id, start: [e.clientX, e.clientY], grab: null, dragging: false, pos: null, ok: false };
+    if (!editable) return; // view mode: the press falls through and orbits the room
+    const tile = rayToTile(e.ray, frame);
+    if (!tile) return;
+    const p = layout.racks[id];
+    press.current.grab = { dx: p.x - tile.x, dz: p.z - tile.z };
+    // OrbitControls listens on the same element, registered after R3F's own handlers, so this
+    // runs first and the camera never starts orbiting.
+    if (controls) controls.enabled = false;
+    e.target.setPointerCapture(e.pointerId);
+  };
+
+  const move = (e, id) => {
+    const pr = press.current;
+    if (!pr || pr.id !== id || !pr.grab) return;
+    e.stopPropagation();
+    if (!pr.dragging && Math.hypot(e.clientX - pr.start[0], e.clientY - pr.start[1]) <= DRAG_THRESHOLD_PX) return;
+    pr.dragging = true;
+    const tile = rayToTile(e.ray, frame);
+    if (!tile) return;
+    const pos = { x: Math.round(tile.x + pr.grab.dx), z: Math.round(tile.z + pr.grab.dz), rot: layout.racks[id].rot };
+    pr.pos = pos;
+    pr.ok = canPlace(layout, id, pos);
+    // re-render only when the snapped tile changes
+    setDrag((d) => (d && d.id === id && d.pos.x === pos.x && d.pos.z === pos.z ? d : { id, pos, ok: pr.ok, dropped: false }));
+  };
+
+  const up = (e, id) => {
+    const pr = press.current;
+    if (!pr || pr.id !== id) return;
+    e.stopPropagation();
+    endPress(e);
+    if (!pr.dragging) return; // a plain click: onClick selects
+    const cur = layout.racks[id];
+    const changed = !!pr.pos && (pr.pos.x !== cur.x || pr.pos.z !== cur.z);
+    if (changed && pr.ok) {
+      setDrag((d) => d && { ...d, dropped: true }); // stay where it was dropped until the new layout arrives
+      onMove?.(id, pr.pos);
+    } else {
+      if (changed) onBlocked?.();
+      setDrag(null); // back to the last valid spot
+    }
+    onSelect?.(id);
+  };
+
+  const bind = (id) => ({
+    onPointerDown: (e) => down(e, id),
+    onPointerMove: (e) => move(e, id),
+    onPointerUp: (e) => up(e, id),
+    // a click that is really the end of a drag (or an orbit) must not select
+    onClick: (e) => { e.stopPropagation(); if (e.delta <= DRAG_THRESHOLD_PX) onSelect?.(id); },
+    onPointerOver: (e) => { e.stopPropagation(); setHoverId(id); },
+    onPointerOut: () => setHoverId((h) => (h === id ? null : h)),
   });
 
-// rack front door: perforated steel with a handle
-const doorTexture = () =>
-  canvasTexture(128, 432, (ctx, w, h) => {
-    ctx.fillStyle = "#23272e";
-    ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = "#3a4049";
-    for (let y = 16; y < h - 16; y += 6) {
-      for (let x = 12; x < w - 12; x += 6) ctx.fillRect(x, y, 3, 3);
-    }
-    ctx.fillStyle = "#9aa3ad";
-    ctx.fillRect(w - 16, h * 0.42, 5, h * 0.16);
-  });
+  const dragId = carrying ? drag.id : null;
+  return (
+    <>
+      <color attach="background" args={["#eef1f5"]} />
+      <hemisphereLight args={[0xffffff, 0x9aa5b1, 1.1]} />
+      <directionalLight
+        ref={sunRef}
+        position={[frame.W * 0.3, 9, frame.D * 0.4]}
+        intensity={1.6}
+        castShadow
+        shadow-mapSize={[2048, 2048]}
+        shadow-bias={-0.0005}
+        shadow-camera-left={-half}
+        shadow-camera-right={half}
+        shadow-camera-top={half}
+        shadow-camera-bottom={-half}
+        shadow-camera-near={1}
+        shadow-camera-far={30}
+      />
 
-// cooling unit front: horizontal grille
-const grilleTexture = () =>
-  canvasTexture(128, 256, (ctx, w, h) => {
-    ctx.fillStyle = "#e9ecef";
-    ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = "#b9c0c8";
-    for (let y = 40; y < h - 20; y += 8) ctx.fillRect(10, y, w - 20, 3);
-    ctx.fillStyle = "#4b5563";
-    ctx.fillRect(14, 12, 36, 16);
-  });
+      <Room layout={layout} frame={frame} assets={assets} />
 
-const hasWebGL = () => {
-  try {
-    const c = document.createElement("canvas");
-    return !!(c.getContext("webgl2") || c.getContext("webgl"));
-  } catch {
-    return false;
-  }
+      {Object.keys(layout.racks).map((id) => {
+        const pos = drag && drag.id === id ? drag.pos : layout.racks[id];
+        return (
+          <Rack
+            key={id}
+            data={racks[id]}
+            transform={rackTransform(pos, frame)}
+            lifted={dragId === id}
+            selected={id === selectedId}
+            hovered={id === hoverId || id === dragId}
+            colorMode={colorMode}
+            labelVisible={showLabels || id === selectedId || id === hoverId || id === dragId}
+            assets={assets}
+            handlers={bind(id)}
+          />
+        );
+      })}
+      {carrying && <DropMarker drag={drag} frame={frame} />}
+
+      <OrbitControls
+        ref={controlsRef}
+        makeDefault
+        enableDamping
+        maxPolarAngle={Math.PI / 2.1} // never go under the floor
+        minDistance={2}
+        maxDistance={Math.max(frame.W, frame.D) * 2.5}
+      />
+      <CameraRig view={view} frame={frame} controlsRef={controlsRef} />
+    </>
+  );
 };
 
 /**
- * @param layout       { width, depth, racks: {id: {x,z,rot}}, fixtures, coldAisles } (tile units)
+ * @param layout       { width, depth, racks: {id: {x,z,rot}}, fixtures, coldAisles, trays } (tile units)
  * @param racks        { id: rackData } — status, uUsed, uTotal, name
  * @param selectedId   selected rack id or null
  * @param colorMode    "status" | "usage" — colour of each rack's top panel
@@ -113,402 +263,24 @@ const hasWebGL = () => {
  * @param onSelect     (id | null) => void
  * @param onMove       (id, {x,z,rot}) => void — only called for valid drops
  * @param onBlocked    () => void — a drop landed somewhere it can't go
+ * @param fallback     content shown when WebGL is unavailable
  */
-const HallScene = ({
-  layout, racks, selectedId, colorMode = "status", showLabels = false, view = "perspective", editable = false,
-  onSelect, onMove, onBlocked, fallback, className = "",
-}) => {
-  const hostRef = useRef(null);
-  const labelsRef = useRef(null);
-  const apiRef = useRef(null);
-  const live = useRef({});
-  live.current = { layout, racks, selectedId, colorMode, showLabels, editable, onSelect, onMove, onBlocked };
-  const webgl = useRef(hasWebGL()).current;
-
-  // —— build the room once per hall (the parent remounts via key) ——
-  useEffect(() => {
-    if (!webgl) return undefined;
-    const host = hostRef.current;
-    const labelsHost = labelsRef.current;
-    const L = live.current.layout;
-    const W = L.width * TILE;
-    const D = L.depth * TILE;
-    // tile (x, z) → world (centre of the room at the origin)
-    const wx = (x) => x * TILE - W / 2;
-    const wz = (z) => z * TILE - D / 2;
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    host.appendChild(renderer.domElement);
-
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color("#eef1f5");
-    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 200);
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.maxPolarAngle = Math.PI / 2.1; // never go under the floor
-    controls.minDistance = 2;
-    controls.maxDistance = Math.max(W, D) * 2.5;
-
-    const disposables = [];
-    const keep = (x) => { disposables.push(x); return x; };
-
-    // lights: soft sky fill + one shadow-casting "ceiling" light
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x9aa5b1, 1.1));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.6);
-    sun.position.set(W * 0.3, 9, D * 0.4);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    const half = Math.max(W, D) * 0.7;
-    Object.assign(sun.shadow.camera, { left: -half, right: half, top: half, bottom: -half, near: 1, far: 30 });
-    sun.shadow.bias = -0.0005;
-    scene.add(sun);
-
-    // floor
-    const floorTex = keep(floorTexture(L));
-    const floor = new THREE.Mesh(
-      keep(new THREE.PlaneGeometry(W, D)),
-      keep(new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.85 })),
-    );
-    floor.rotation.x = -Math.PI / 2;
-    floor.receiveShadow = true;
-    scene.add(floor);
-    // floor edge, so the raised floor reads as a slab
-    const slab = new THREE.Mesh(keep(new THREE.BoxGeometry(W, 0.3, D)), keep(new THREE.MeshStandardMaterial({ color: "#b8bec7" })));
-    slab.position.y = -0.151;
-    scene.add(slab);
-
-    // walls face inward with FrontSide only: the ones between camera and room
-    // are back-facing and get culled, giving a dollhouse cut-away from any angle
-    const wallMat = keep(new THREE.MeshStandardMaterial({ color: "#f4f5f7", roughness: 0.95 }));
-    const wallGeoW = keep(new THREE.PlaneGeometry(W, WALL_H));
-    const wallGeoD = keep(new THREE.PlaneGeometry(D, WALL_H));
-    [
-      [wallGeoW, 0, -D / 2, 0],
-      [wallGeoW, 0, D / 2, Math.PI],
-      [wallGeoD, -W / 2, 0, Math.PI / 2],
-      [wallGeoD, W / 2, 0, -Math.PI / 2],
-    ].forEach(([g, x, z, ry]) => {
-      const m = new THREE.Mesh(g, wallMat);
-      m.position.set(x, WALL_H / 2, z);
-      m.rotation.y = ry;
-      m.receiveShadow = true;
-      scene.add(m);
-    });
-    // entry door on the front wall, in the entry aisle
-    const door = new THREE.Mesh(keep(new THREE.PlaneGeometry(1.2, 2.2)), keep(new THREE.MeshStandardMaterial({ color: "#8a94a3" })));
-    door.position.set(wx(5.5), 1.1, D / 2 - 0.01);
-    door.rotation.y = Math.PI;
-    scene.add(door);
-
-    // fixtures: CRAC units and PDUs
-    const grille = keep(grilleTexture());
-    const cracSide = keep(new THREE.MeshStandardMaterial({ color: "#e3e6ea", roughness: 0.6 }));
-    const cracFront = keep(new THREE.MeshStandardMaterial({ map: grille, roughness: 0.6 }));
-    const pduMat = keep(new THREE.MeshStandardMaterial({ color: "#4a515b", roughness: 0.5, metalness: 0.2 }));
-    L.fixtures.forEach((f) => {
-      const w = f.w * TILE;
-      const d = f.d * TILE;
-      const h = f.kind === "crac" ? 1.95 : 1.8;
-      const geo = keep(new THREE.BoxGeometry(w - 0.04, h, d - 0.04));
-      // CRAC grille faces into the room (+x)
-      const mats = f.kind === "crac" ? [cracFront, cracSide, cracSide, cracSide, cracSide, cracSide] : pduMat;
-      const m = new THREE.Mesh(geo, mats);
-      m.position.set(wx(f.x) + w / 2, h / 2, wz(f.z) + d / 2);
-      m.castShadow = true;
-      m.receiveShadow = true;
-      scene.add(m);
-    });
-
-    // cold-aisle containment roof (glass) + overhead cable trays over every row
-    const glass = keep(new THREE.MeshStandardMaterial({ color: "#bfe3ff", transparent: true, opacity: 0.22, roughness: 0.1, depthWrite: false }));
-    L.coldAisles.forEach((a) => {
-      const roof = new THREE.Mesh(keep(new THREE.BoxGeometry((a.w - 1) * TILE, 0.02, a.d * TILE)), glass);
-      roof.position.set(wx(a.x) + ((a.w - 1) * TILE) / 2, RACK_H + 0.01, wz(a.z) + (a.d * TILE) / 2);
-      scene.add(roof);
-    });
-    const trayMat = keep(new THREE.MeshStandardMaterial({ color: "#f2c94c", roughness: 0.5, metalness: 0.3 }));
-    L.trays.forEach((r) => {
-      const len = r.w * TILE;
-      const tray = new THREE.Mesh(keep(new THREE.BoxGeometry(len, 0.08, 0.3)), trayMat);
-      tray.position.set(wx(r.x) + len / 2, TRAY_Y, wz(r.z) + (r.d * TILE) / 2);
-      tray.castShadow = true;
-      scene.add(tray);
-    });
-
-    // racks
-    const doorTex = keep(doorTexture());
-    const bodyGeo = keep(new THREE.BoxGeometry(TILE - 0.02, RACK_H, TILE * 2 - 0.02));
-    const doorGeo = keep(new THREE.PlaneGeometry(TILE - 0.06, RACK_H - 0.08));
-    const capGeo = keep(new THREE.BoxGeometry(TILE - 0.04, 0.03, TILE * 2 - 0.04));
-    const ledGeo = keep(new THREE.BoxGeometry(0.3, 0.025, 0.01));
-    const outlineGeo = keep(new THREE.EdgesGeometry(new THREE.BoxGeometry(TILE + 0.04, RACK_H + 0.04, TILE * 2 + 0.04)));
-    const outlineMat = keep(new THREE.LineBasicMaterial({ color: "#2f6bff" }));
-    const doorMat = keep(new THREE.MeshStandardMaterial({ map: doorTex, roughness: 0.55, metalness: 0.35 }));
-
-    const rackObjs = {};
-    Object.keys(L.racks).forEach((id) => {
-      const data = live.current.racks[id];
-      const g = new THREE.Group();
-      g.userData.rackId = id;
-      const bodyMat = keep(new THREE.MeshStandardMaterial({ color: "#2b3038", roughness: 0.6, metalness: 0.3 }));
-      const body = new THREE.Mesh(bodyGeo, bodyMat);
-      body.position.y = RACK_H / 2;
-      body.castShadow = true;
-      body.receiveShadow = true;
-      const front = new THREE.Mesh(doorGeo, doorMat);
-      front.position.set(0, RACK_H / 2, TILE - 0.005);
-      const capMat = keep(new THREE.MeshStandardMaterial({ color: "#64748b", roughness: 0.5 }));
-      const cap = new THREE.Mesh(capGeo, capMat);
-      cap.position.y = RACK_H + 0.016;
-      const ledMat = keep(new THREE.MeshStandardMaterial({ color: STATUS_COLOR[data.status], emissive: STATUS_COLOR[data.status], emissiveIntensity: 1.4 }));
-      const led = new THREE.Mesh(ledGeo, ledMat);
-      led.position.set(0, RACK_H - 0.12, TILE + 0.005);
-      const outline = new THREE.LineSegments(outlineGeo, outlineMat);
-      outline.position.y = RACK_H / 2;
-      outline.visible = false;
-      g.add(body, front, cap, led, outline);
-      scene.add(g);
-
-      const label = document.createElement("div");
-      label.className = "hall-label";
-      label.textContent = data.name;
-      labelsHost.appendChild(label);
-      rackObjs[id] = { g, body, bodyMat, cap, capMat, outline, label };
-    });
-
-    // drop marker: shows the footprint under a dragged rack, green or red
-    const markerMat = keep(new THREE.MeshBasicMaterial({ color: "#2ab57d", transparent: true, opacity: 0.35, depthWrite: false }));
-    const marker = new THREE.Mesh(keep(new THREE.PlaneGeometry(1, 1)), markerMat);
-    marker.rotation.x = -Math.PI / 2;
-    marker.position.y = 0.005;
-    marker.visible = false;
-    scene.add(marker);
-
-    const placeGroup = (g, pos) => {
-      const { w, d } = footprint(pos.rot);
-      g.position.set(wx(pos.x) + (w * TILE) / 2, 0, wz(pos.z) + (d * TILE) / 2);
-      g.rotation.y = (pos.rot * Math.PI) / 2;
-    };
-    const placeMarker = (pos, ok) => {
-      const { w, d } = footprint(pos.rot);
-      marker.scale.set(w * TILE, d * TILE, 1);
-      marker.position.x = wx(pos.x) + (w * TILE) / 2;
-      marker.position.z = wz(pos.z) + (d * TILE) / 2;
-      markerMat.color.set(ok ? "#2ab57d" : "#e5484d");
-      marker.visible = true;
-    };
-
-    const syncLayout = () => {
-      const { layout: lay } = live.current;
-      Object.entries(rackObjs).forEach(([id, o]) => lay.racks[id] && placeGroup(o.g, lay.racks[id]));
-    };
-    const syncStyle = () => {
-      const { racks: data, selectedId: sel, colorMode: mode } = live.current;
-      Object.entries(rackObjs).forEach(([id, o]) => {
-        const r = data[id];
-        o.capMat.color.set(mode === "usage" ? usageColor(r.uUsed / r.uTotal) : STATUS_COLOR[r.status]);
-        o.outline.visible = id === sel;
-      });
-    };
-    syncLayout();
-    syncStyle();
-
-    // camera presets
-    let tween = null;
-    const presets = () => {
-      const span = Math.max(W, D);
-      return {
-        perspective: { pos: new THREE.Vector3(W * 0.55, span * 0.85, D * 0.95), target: new THREE.Vector3(0, 0.6, 0) },
-        top: { pos: new THREE.Vector3(0, span * 1.45, 0.01), target: new THREE.Vector3(0, 0, 0) },
-      };
-    };
-    const setView = (name, animate = true) => {
-      const p = presets()[name] || presets().perspective;
-      if (!animate) {
-        camera.position.copy(p.pos);
-        controls.target.copy(p.target);
-        return;
-      }
-      // flush leftover orbit inertia first: controls.update() is paused during the tween,
-      // so momentum from the last drag would otherwise kick in once it ends and skew the preset
-      controls.enableDamping = false;
-      controls.update();
-      controls.enableDamping = true;
-      tween = { t0: performance.now(), dur: 900, fromPos: camera.position.clone(), fromTarget: controls.target.clone(), toPos: p.pos, toTarget: p.target };
-    };
-    setView("perspective", false);
-
-    // —— pointer: click selects, drag moves (snapped to tiles) ——
-    const raycaster = new THREE.Raycaster();
-    const ndc = new THREE.Vector2();
-    // drag on the plane of the rack tops, so the part you grabbed stays under the cursor
-    const grabPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -RACK_H);
-    const hitPoint = new THREE.Vector3();
-    const bodies = Object.values(rackObjs).map((o) => o.body);
-    const setRay = (ev) => {
-      const r = renderer.domElement.getBoundingClientRect();
-      ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
-      raycaster.setFromCamera(ndc, camera);
-    };
-    const rackUnder = () => {
-      const hit = raycaster.intersectObjects(bodies)[0];
-      return hit ? hit.object.parent.userData.rackId : null;
-    };
-    const grabTile = () => {
-      if (!raycaster.ray.intersectPlane(grabPlane, hitPoint)) return null;
-      return { x: (hitPoint.x + W / 2) / TILE, z: (hitPoint.z + D / 2) / TILE };
-    };
-
-    let press = null; // { id, start:[x,y], grab:{dx,dz}, dragging, pos, ok }
-    let hoverId = null;
-    const el = renderer.domElement;
-
-    // Runs in the capture phase on the host, i.e. before OrbitControls sees the event.
-    // Grabbing a rack in edit mode stops the event there, so the camera never starts
-    // orbiting; every other press falls through to OrbitControls and rotates the room.
-    const onDown = (ev) => {
-      if (ev.button !== 0 || ev.target !== el) return;
-      setRay(ev);
-      const id = rackUnder();
-      press = { id, start: [ev.clientX, ev.clientY], dragging: false };
-      const tile = id && live.current.editable ? grabTile() : null;
-      if (tile) {
-        const p = live.current.layout.racks[id];
-        press.grab = { dx: p.x - tile.x, dz: p.z - tile.z };
-        ev.stopPropagation();
-        el.setPointerCapture(ev.pointerId);
-      }
-    };
-    const onMovePointer = (ev) => {
-      setRay(ev);
-      if (press && press.id && press.grab) {
-        const moved = Math.hypot(ev.clientX - press.start[0], ev.clientY - press.start[1]) > 4;
-        if (!press.dragging && moved) press.dragging = true;
-        if (press.dragging) {
-          const tile = grabTile();
-          if (!tile) return;
-          const cur = live.current.layout.racks[press.id];
-          const pos = { x: Math.round(tile.x + press.grab.dx), z: Math.round(tile.z + press.grab.dz), rot: cur.rot };
-          const ok = canPlace(live.current.layout, press.id, pos);
-          press.pos = pos;
-          press.ok = ok;
-          placeGroup(rackObjs[press.id].g, pos);
-          rackObjs[press.id].g.position.y = 0.06; // lifted while carried
-          placeMarker(pos, ok);
-          el.style.cursor = "grabbing";
-        }
-        return;
-      }
-      hoverId = rackUnder();
-      el.style.cursor = hoverId ? (live.current.editable ? "grab" : "pointer") : "";
-    };
-    const onUp = (ev) => {
-      if (!press) return;
-      const p = press;
-      press = null;
-      marker.visible = false;
-      if (el.hasPointerCapture(ev.pointerId)) el.releasePointerCapture(ev.pointerId);
-      el.style.cursor = "";
-      const cb = live.current;
-      if (p.dragging && p.id) {
-        const cur = cb.layout.racks[p.id];
-        const changed = p.pos && (p.pos.x !== cur.x || p.pos.z !== cur.z);
-        if (changed && p.ok) {
-          rackObjs[p.id].g.position.y = 0; // stays where it was dropped; the new layout confirms it
-          cb.onMove?.(p.id, p.pos);
-        } else {
-          if (changed) cb.onBlocked?.();
-          syncLayout(); // snap back to the last valid spot
-        }
-        cb.onSelect?.(p.id);
-        return;
-      }
-      if (Math.hypot(ev.clientX - p.start[0], ev.clientY - p.start[1]) <= 4) cb.onSelect?.(p.id || null);
-    };
-    const onLeave = () => { hoverId = null; };
-    host.addEventListener("pointerdown", onDown, { capture: true });
-    el.addEventListener("pointermove", onMovePointer);
-    el.addEventListener("pointerup", onUp);
-    el.addEventListener("pointercancel", onUp);
-    el.addEventListener("pointerleave", onLeave);
-
-    const resize = () => {
-      const w = host.clientWidth;
-      const h = host.clientHeight;
-      if (!w || !h) return;
-      renderer.setSize(w, h);
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-    };
-    const ro = new ResizeObserver(resize);
-    ro.observe(host);
-    resize();
-
-    const v = new THREE.Vector3();
-    let raf = 0;
-    const tick = () => {
-      raf = requestAnimationFrame(tick);
-      if (tween) {
-        const t = Math.min(1, (performance.now() - tween.t0) / tween.dur);
-        const k = easeInOutCubic(t);
-        camera.position.lerpVectors(tween.fromPos, tween.toPos, k);
-        controls.target.lerpVectors(tween.fromTarget, tween.toTarget, k);
-        camera.lookAt(controls.target);
-        if (t >= 1) tween = null;
-      } else {
-        controls.update();
-      }
-      const w = host.clientWidth;
-      const h = host.clientHeight;
-      const { selectedId: sel, showLabels: all } = live.current;
-      const dragId = press && press.dragging ? press.id : null;
-      Object.entries(rackObjs).forEach(([id, o]) => {
-        o.bodyMat.emissive.set(id === hoverId || id === dragId ? "#14264d" : "#000000");
-        v.set(o.g.position.x, RACK_H + 0.25, o.g.position.z).project(camera);
-        const onScreen = v.z < 1;
-        o.label.style.transform = `translate(${((v.x + 1) / 2) * w}px, ${((1 - v.y) / 2) * h}px)`;
-        o.label.classList.toggle("is-visible", onScreen && (all || id === sel || id === hoverId || id === dragId));
-        o.label.classList.toggle("is-selected", id === sel);
-      });
-      renderer.render(scene, camera);
-    };
-    tick();
-
-    apiRef.current = { syncLayout, syncStyle, setView };
-
-    return () => {
-      cancelAnimationFrame(raf);
-      ro.disconnect();
-      host.removeEventListener("pointerdown", onDown, { capture: true });
-      el.removeEventListener("pointermove", onMovePointer);
-      el.removeEventListener("pointerup", onUp);
-      el.removeEventListener("pointercancel", onUp);
-      el.removeEventListener("pointerleave", onLeave);
-      controls.dispose();
-      Object.values(rackObjs).forEach((o) => o.label.remove());
-      disposables.forEach((d) => d.dispose());
-      renderer.dispose();
-      el.remove();
-      apiRef.current = null;
-    };
-    // the scene is built once per hall; later prop changes go through apiRef
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => { apiRef.current?.syncLayout(); }, [layout]);
-  useEffect(() => { apiRef.current?.syncStyle(); }, [selectedId, colorMode, racks]);
-  useEffect(() => { apiRef.current?.setView(view); }, [view]);
-
-  if (!webgl) return <div className={`hall-scene hall-scene--fallback ${className}`}>{fallback}</div>;
+const HallScene = ({ fallback, className = "", onSelect, ...scene }) => {
+  const handleMissed = useCallback(() => onSelect?.(null), [onSelect]);
+  if (!hasWebGL()) return <div className={`hall-scene hall-scene--fallback ${className}`}>{fallback}</div>;
   return (
     <div className={`hall-scene ${className}`}>
-      <div ref={hostRef} className="hall-scene__canvas" />
-      <div ref={labelsRef} className="hall-scene__labels" />
+      {/* "demand": render only when something changed — the room is static between gestures */}
+      <SlimCanvas
+        shadows="soft"
+        dpr={[1, 2]}
+        frameloop="demand"
+        camera={{ fov: 45, near: 0.1, far: 200 }}
+        onPointerMissed={handleMissed}
+        fallback={fallback}
+      >
+        <Scene onSelect={onSelect} {...scene} />
+      </SlimCanvas>
     </div>
   );
 };
