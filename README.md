@@ -52,7 +52,7 @@ flowchart LR
 
 ## Deploy
 
-`.github/workflows/deploy.yml` tests, builds and publishes to GitHub Pages on every push to `main`. Turn it on once under **Settings → Pages → Source: GitHub Actions**. The build uses relative paths (`base: "./"`), so it works from any sub-path or static host.
+`.github/workflows/deploy.yml` runs the unit tests and the build, plus the 3D-hall browser suite (`verify-hall`) in parallel, and publishes to GitHub Pages on every push to `main` once all of them pass. A failing browser run uploads screenshots of what it saw as the `verify-hall-screenshots` artifact. Why it gates the deploy, with timings: [`docs/decisions/0002-ci-gate-for-the-3d-hall.md`](docs/decisions/0002-ci-gate-for-the-3d-hall.md). Turn it on once under **Settings → Pages → Source: GitHub Actions**. The build uses relative paths (`base: "./"`), so it works from any sub-path or static host.
 
 ## Known limits
 
@@ -106,7 +106,7 @@ npm run verify:hall   # 用真實瀏覽器操作 3D 機房（先 build，細節�
 
 ### 部署
 
-推上 `main` 後，GitHub Actions 會跑測試、建置並發佈到 GitHub Pages。第一次要到 **Settings → Pages → Source** 選 **GitHub Actions**。
+推上 `main` 後，GitHub Actions 會跑單元測試、建置，並平行跑 3D 機房的瀏覽器驗證（`verify-hall`），全部通過才發佈到 GitHub Pages；驗證失敗時會把當下畫面的截圖存成 `verify-hall-screenshots`。為什麼要擋部署、各步驟耗時：[`docs/decisions/0002-ci-gate-for-the-3d-hall.md`](docs/decisions/0002-ci-gate-for-the-3d-hall.md)。第一次要到 **Settings → Pages → Source** 選 **GitHub Actions**。
 
 ### 已知限制
 

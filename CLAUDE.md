@@ -22,6 +22,8 @@ npm run build && npm run verify:hall      # CHROMIUM_PATH=<path> when Playwright
 
 A bug that reaches a browser earns a check in `scripts/verify-hall/suite.cjs`. Waits there target the expected state (`kit.until`); a camera that has not started moving looks as still as one that has finished.
 
+CI runs the same suite as the `verify-hall` job and the deploy waits for it; a red run uploads the `verify-hall-screenshots` artifact. Try workflow changes on a branch with `workflow_dispatch` — only `main` deploys. ADR 0002 has the numbers and says when to relax the gate.
+
 ## Before changing the 3D hall
 
 Read ADR 0001's *Pitfalls* section: the scene registry, label pointer events, the demand render loop and pointer cancellation each cost a debugging detour.
