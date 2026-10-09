@@ -29,6 +29,7 @@ npm install
 npm run dev       # http://localhost:5173
 npm test          # unit tests (vitest)
 npm run build     # static site in dist/
+npm run verify:hall   # drives the 3D hall in a real browser (build first; see CLAUDE.md)
 ```
 
 ## How it works
@@ -45,6 +46,7 @@ flowchart LR
 
 - **Morph.** The mesh is a 256×128 grid whose `uv` is (longitude, latitude). The vertex shader computes the sphere position `s` and the plane position `p = (lon, lat, 1)` and outputs `mix(s, p, uMorph)`. `globeMath.js` mirrors the same formula in JavaScript so markers stay on the surface.
 - **Borders.** Natural Earth 110m (from `world-atlas`) is drawn into a 4096×2048 equirectangular canvas used as the texture. Rings that cross the antimeridian (Russia, Fiji) are unwrapped first. Otherwise they fill as a band across the whole map.
+- **3D hall.** Built with [react-three-fiber](https://r3f.docs.pmnd.rs/) through its `createRoot` API, so only the three.js classes the scene uses are bundled (`hall3d/SlimCanvas.jsx`, `hall3d/elements.js`). The globe stays on plain three.js. Why, with measurements and the pitfalls found: [`docs/decisions/0001-react-three-fiber-for-3d-scenes.md`](docs/decisions/0001-react-three-fiber-for-3d-scenes.md).
 - **Hall floor plan.** `hallLayout.js` is pure logic in tile units: the default hot/cold aisle plan, rack footprints (1 × 2 tiles, 2 × 1 when turned), collision checks and restoring a saved layout as a set (so swapped racks restore correctly). `HallScene.jsx` (three.js) and `HallFlow.jsx` (React Flow, node position = tile × 44 px) only draw it and turn drags into "move rack to tile" requests, so the two views can never disagree. Drags are computed on the plane of the rack tops, so the part you grabbed stays under the cursor.
 - **Graph layout.** Four fixed levels with fixed node widths, so a small hand-written tidy tree replaces dagre/elk. Racks wrap into a 4-column grid under their hall.
 
@@ -95,7 +97,12 @@ npm install
 npm run dev       # http://localhost:5173
 npm test          # 單元測試（vitest）
 npm run build     # 靜態網站輸出到 dist/
+npm run verify:hall   # 用真實瀏覽器操作 3D 機房（先 build，細節見 CLAUDE.md）
 ```
+
+### 技術決策
+
+3D 機房用 react-three-fiber（透過 `createRoot` API，只打包用到的 three.js 類別）；地球儀維持原生 three.js。原因、量測數字與踩到的坑記在 [`docs/decisions/0001-react-three-fiber-for-3d-scenes.md`](docs/decisions/0001-react-three-fiber-for-3d-scenes.md)。
 
 ### 部署
 
