@@ -12,9 +12,16 @@ const base = process.argv[2];
 if (!base) throw new Error("usage: suite.cjs <baseUrl>");
 const out = process.env.VERIFY_OUT || os.tmpdir();
 const results = [];
+// A failing check leaves a screenshot of the page it was about: in CI there is no way to look at the
+// run afterwards, so the picture is the only evidence of what the browser actually showed.
+let pageNow = null;
+const shots = [];
 const check = (name, ok, detail = "") => {
   results.push(ok);
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? `  — ${detail}` : ""}`);
+  if (!ok && pageNow) {
+    shots.push(pageNow.screenshot({ path: path.join(out, `verify-hall-FAIL-${results.length}.png`) }).catch(() => {}));
+  }
 };
 
 (async () => {
@@ -23,6 +30,7 @@ const check = (name, ok, detail = "") => {
   const errs = [];
   page.on("pageerror", (e) => errs.push(`pageerror: ${e.message}`));
   page.on("console", (m) => m.type() === "error" && errs.push(m.text()));
+  pageNow = page;
   await page.addInitScript(kit.GL_COUNTERS);
   await kit.openHall(page, base);
 
@@ -187,11 +195,13 @@ const check = (name, ok, detail = "") => {
   check("[reopen] another hall opens and renders", (await page.locator(".hall-label").count()) === 6, `${await page.locator(".hall-label").count()} racks`);
 
   check("no console errors or page errors", errs.length === 0, errs.slice(0, 3).join(" | "));
+  await Promise.all(shots);
   await browser.close();
 
   // —— no WebGL: say so, and keep the rest of the hall usable ——
   const bare = await kit.launch(["--disable-3d-apis", "--disable-gpu"]);
   const p2 = await bare.newPage({ viewport: { width: 1600, height: 1000 }, locale: "zh-TW" });
+  pageNow = p2;
   const errs2 = [];
   p2.on("pageerror", (e) => errs2.push(e.message));
   await p2.goto(`${base}?layout=C`);
@@ -203,10 +213,11 @@ const check = (name, ok, detail = "") => {
   await p2.getByText("2D 平面圖").click();
   await p2.waitForSelector(".plan-rack");
   check("[no WebGL] …and the 2D floor plan still works", (await p2.locator(".plan-rack").count()) === 12 && errs2.length === 0, errs2.join(" | "));
+  await Promise.all(shots);
   await bare.close();
 
   const failed = results.filter((x) => !x).length;
-  console.log(`\n${results.length - failed}/${results.length} passed`);
+  console.log(`\n${results.length - failed}/${results.length} passed${failed ? ` — screenshots of the failures are in ${out}` : ""}`);
   process.exit(failed ? 1 : 0);
 })().catch((e) => {
   console.error(e);

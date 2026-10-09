@@ -11,9 +11,12 @@ permissions:
   pages: write
   id-token: write
 
+# One run per ref. Runs on a branch or PR may cancel each other, but nothing cancels a run on main:
+# a push to main queues behind a running deploy instead of cutting it off mid-flight, and a
+# branch run can never cancel a deploy.
 concurrency:
-  group: pages
-  cancel-in-progress: true
+  group: pages-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   build:
@@ -32,9 +35,42 @@ jobs:
         with:
           path: dist
 
+  # Drives the 3D hall in a real browser (software GL): gestures, colours, hit-testing, idle
+  # rendering. Runs beside `build` so it adds its own duration to the pipeline, not the sum; it gates
+  # the deploy because the bugs it exists for are exactly the ones unit tests cannot see.
+  # Decision and numbers: docs/decisions/0002-ci-gate-for-the-3d-hall.md
+  verify-hall:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VERIFY_OUT: ${{ runner.temp }}/verify-hall
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # the browser is pinned to the playwright-core version, so the run is the same browser every time
+      - id: playwright
+        run: echo "version=$(node -p "require('playwright-core/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - run: npx playwright-core install --with-deps chromium
+      - run: npm run build
+      - run: npm run verify:hall
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-hall-screenshots
+          path: ${{ runner.temp }}/verify-hall
+          if-no-files-found: ignore
+
   deploy:
     if: github.ref == 'refs/heads/main'
-    needs: build
+    needs: [build, verify-hall]
     runs-on: ubuntu-latest
     environment:
       name: github-pages
