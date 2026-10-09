@@ -23,14 +23,14 @@ Numbers are from real runs of this workflow on GitHub-hosted `ubuntu-latest`, on
 
 **The reason is isolation, not speed.** Running beside `build` was expected to make the cost "the longer of the two, not the sum"; measured, it saves about 5 s, because `build` takes only ~20 s. What option 2 really buys: a failing check is its own named job, `Re-run failed jobs` repeats only the browser run, and `timeout-minutes: 15` bounds it. It costs one extra `npm ci` + `build` (~10 s of runner time).
 
-| Pipeline (push to `main`) | Wall time |
+| Time until `deploy` can start | |
 |---|---|
-| Before | ~25 s build + ~10 s deploy ≈ 35 s |
-| Now, cold browser cache | `verify-hall` 145 s → ≈ 155 s |
-| Now, warm cache | `verify-hall` 116 s → ≈ 125 s |
-| (estimate) option 1, warm | 20 + 16 + 80–103 → ≈ 120–140 s, within ~5 s of option 2 |
+| Before | `build` ≈ 25 s |
+| Now, cold browser cache | `verify-hall` 142–145 s |
+| Now, warm cache | `verify-hall` ≈ 116 s |
+| (estimate) option 1, warm | 20 + 16 + 80–103 ≈ 120–140 s, within ~5 s of option 2 |
 
-So each push now waits **about 1.5–2 minutes longer**. That is the price of the gate.
+`deploy` itself takes 10–30 s and is unchanged by this. Each push now waits **about 1.5–2 minutes longer** before deploying — the price of the gate. Caches are scoped to a branch: a cache made on a branch is not visible to `main`, so the first `main` run after a Playwright bump is cold.
 
 `verify-hall` steps, warm cache: install 16 s (system libraries; the browser itself comes from cache), build 5 s, suite 80 s (cold: 103 s).
 
