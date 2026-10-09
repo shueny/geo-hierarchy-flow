@@ -46,7 +46,8 @@ const HallView = ({ site, hall, onClose }) => {
   const [view, setView] = useState("perspective");
   // 3D only: off = any drag orbits the whole room; on = dragging a rack moves it
   const [editing, setEditing] = useState(false);
-  const [showLabels, setShowLabels] = useState(false);
+  // names on by default: a name above a box is what tells you it is a rack and can be clicked
+  const [showLabels, setShowLabels] = useState(true);
   const [notice, setNotice] = useState("");
   const noticeTimer = useRef(0);
   const closeRef = useRef(null);

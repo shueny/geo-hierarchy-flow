@@ -43,7 +43,9 @@ const build = (layout) => {
     outlineMat: new LineBasicMaterial({ color: "#2f6bff" }),
     // room fittings used more than once
     wallMat: new MeshStandardMaterial({ color: "#f4f5f7", roughness: 0.95 }),
-    pduMat: new MeshStandardMaterial({ color: "#4a515b", roughness: 0.5, metalness: 0.2 }),
+    // Light and see-through on purpose: a PDU is scenery, and the dark racks are what you can click.
+    // A dark opaque box of rack size read as a rack nobody could select.
+    pduMat: new MeshStandardMaterial({ color: "#c3cad3", transparent: true, opacity: 0.55, roughness: 0.9, metalness: 0 }),
     trayMat: new MeshStandardMaterial({ color: "#f2c94c", roughness: 0.5, metalness: 0.3 }),
     glassMat: new MeshStandardMaterial({ color: "#bfe3ff", transparent: true, opacity: 0.22, roughness: 0.1, depthWrite: false }),
     // BoxGeometry face order: +x, -x, +y, -y, +z, -z — the grille faces into the room (+x)

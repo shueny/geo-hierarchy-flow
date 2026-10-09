@@ -60,6 +60,14 @@ const check = (name, ok, detail = "") => {
   const [r, g, b] = await kit.pixel(page, c2x.x, c2x.y + tilePx * 0.7);
   check("[colour] a healthy rack's top is the bright status green, not a darkened one", g >= 150 && r < 120 && b < 170, `rgb(${r}, ${g}, ${b})`);
 
+  // —— what is clickable must look clickable ——
+  const namesOn = await page.locator(".hall-label.is-visible").count();
+  check("[affordance] every rack carries its name on first open", namesOn === 12 && (await page.getByLabel("顯示所有機櫃名稱").isChecked()), `${namesOn} names`);
+  // the PDU stands right after the end of row A (A6): light and see-through, unlike the dark racks
+  const a6 = await lc("A6");
+  const [pr, pg, pb] = await kit.pixel(page, a6.x + tilePx, a6.y + tilePx * 0.7);
+  check("[affordance] a PDU is pale scenery, not a dark rack-like box", (pr + pg + pb) / 3 > 150, `rgb(${pr}, ${pg}, ${pb})`);
+
   // —— view mode ——
   let a1 = await lc("A1");
   await page.mouse.click(a1.x, a1.y);
