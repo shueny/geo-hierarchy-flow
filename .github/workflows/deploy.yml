@@ -42,8 +42,6 @@ jobs:
   verify-hall:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      VERIFY_OUT: ${{ runner.temp }}/verify-hall
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -61,6 +59,8 @@ jobs:
       - run: npx playwright-core install --with-deps chromium
       - run: npm run build
       - run: npm run verify:hall
+        env:
+          VERIFY_OUT: ${{ runner.temp }}/verify-hall # the `runner` context exists in steps, not in job-level env
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
