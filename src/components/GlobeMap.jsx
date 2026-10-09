@@ -7,7 +7,7 @@
 // (Natural Earth 110m), drawn into an equirectangular canvas used as the texture.
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { OrbitControls } from "three-stdlib";
 import { feature } from "topojson-client";
 import world from "world-atlas/countries-110m.json";
 import { LON0, surfacePoint, unwrapRing, easeInOutCubic } from "./globeMath";
@@ -157,6 +157,11 @@ const GlobeMap = ({ mode = "3d", sites, labelOf, highlight, selectedId, focusId,
 
     let morph = 0;
     let tween = null;
+    // Render on demand (docs/decisions/0003-…): the loop below runs only while something moves
+    // (a tween, a drag, damping inertia); everything else that changes what is on screen calls wake().
+    let raf = 0;
+    const wake = () => { if (!raf) raf = requestAnimationFrame(tick); };
+
     const startTween = ({ toMorph = morph, toPos, toTarget, dur = 1200 }) => {
       tween = {
         t0: performance.now(), dur,
@@ -164,6 +169,7 @@ const GlobeMap = ({ mode = "3d", sites, labelOf, highlight, selectedId, focusId,
         fromPos: camera.position.clone(), toPos: toPos || camera.position.clone(),
         fromTarget: controls.target.clone(), toTarget: toTarget || controls.target.clone(),
       };
+      wake();
     };
 
     // camera distance at which the whole 2π-wide plane fits the viewport
@@ -214,10 +220,13 @@ const GlobeMap = ({ mode = "3d", sites, labelOf, highlight, selectedId, focusId,
     };
     const onMove = (ev) => {
       const id = pick(ev);
-      stateRef.current.hoverId = id;
       renderer.domElement.style.cursor = id ? "pointer" : "";
+      if (id !== stateRef.current.hoverId) { stateRef.current.hoverId = id; wake(); }
     };
-    const onLeave = () => { stateRef.current.hoverId = null; };
+    const onLeave = () => {
+      if (stateRef.current.hoverId !== null) { stateRef.current.hoverId = null; wake(); }
+    };
+    for (const type of ["start", "change", "end"]) controls.addEventListener(type, wake);
     const el = renderer.domElement;
     el.addEventListener("pointerdown", onDown);
     el.addEventListener("pointerup", onUp);
@@ -231,16 +240,17 @@ const GlobeMap = ({ mode = "3d", sites, labelOf, highlight, selectedId, focusId,
       renderer.setSize(w, h);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
+      wake(); // setSize clears the canvas
     };
     const ro = new ResizeObserver(resize);
     ro.observe(host);
-    resize();
 
     const v = new THREE.Vector3();
-    let raf = 0;
     const tick = () => {
-      raf = requestAnimationFrame(tick);
+      raf = 0;
+      let moving = false; // ask for another frame only while this one changed the view
       if (tween) {
+        moving = true;
         const t = Math.min(1, (performance.now() - tween.t0) / tween.dur);
         const k = easeInOutCubic(t);
         morph = THREE.MathUtils.lerp(tween.fromMorph, tween.toMorph, k);
@@ -252,7 +262,7 @@ const GlobeMap = ({ mode = "3d", sites, labelOf, highlight, selectedId, focusId,
         controls.target.copy(tween.fromTarget).lerp(tween.toTarget, k);
         if (t >= 1) tween = null;
       } else {
-        controls.update();
+        moving = controls.update();
       }
       uniforms.uMorph.value = morph;
       camera.lookAt(controls.target);
@@ -273,10 +283,11 @@ const GlobeMap = ({ mode = "3d", sites, labelOf, highlight, selectedId, focusId,
         label.classList.toggle("is-selected", s.id === sel);
       });
       renderer.render(scene, camera);
+      if (moving) wake();
     };
-    tick();
+    resize(); // sizes the canvas and asks for the first frame
 
-    apiRef.current = { setMode, focus, setLabels };
+    apiRef.current = { setMode, focus, setLabels, wake };
 
     return () => {
       cancelAnimationFrame(raf);
@@ -302,6 +313,7 @@ const GlobeMap = ({ mode = "3d", sites, labelOf, highlight, selectedId, focusId,
   useEffect(() => { apiRef.current?.setMode(mode); }, [mode]);
   useEffect(() => { if (focusId) apiRef.current?.focus(focusId); }, [focusId]);
   useEffect(() => { apiRef.current?.setLabels(labelOf); }, [labelOf]);
+  useEffect(() => { apiRef.current?.wake(); }, [selectedId]); // the enlarged marker is drawn by the next frame
 
   if (!webgl) return <div className={`globe globe--fallback ${className}`}>{fallback}</div>;
   return (

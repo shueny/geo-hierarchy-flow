@@ -103,7 +103,7 @@ Consequence: anything animated must keep asking for frames (`invalidate()` insid
 | # | Option | Verdict |
 |---|---|---|
 | 1 | Browser suite in the repo, run by hand: `npm run build && npm run verify:hall` | **Chosen.** |
-| 2 | The same as a CI job | Not yet: needs Chromium + software GL on the runner; add if the suite gets flaky locally or the hall changes often. |
+| 2 | The same as a CI job | Not yet: needs Chromium + software GL on the runner; add if the suite gets flaky locally or the hall changes often. *(Done in [0002](0002-ci-gate-for-the-3d-hall.md).)* |
 | 3 | `@react-three/test-renderer` | Rejected: no WebGL, so it cannot see the bugs below. |
 | 4 | Throw-away scripts (what happened before) | Rejected: they vanish with the session. |
 
@@ -119,7 +119,7 @@ Pixel comparison of the default view before/after the migration: mean difference
 
 ## Revisit when
 
-- **`GlobeMap` moves to R3F** when it gains scene content React should drive (arcs between sites, per-site meshes or cards, 3+ interactive behaviours), or when a second copy of `OrbitControls` (three-stdlib's, pulled in by drei, next to three's own) starts to matter. Today it is one mesh and a handful of markers, and nothing is gained.
+- **`GlobeMap` moves to R3F** when it gains scene content React should drive (arcs between sites, per-site meshes or cards, 3+ interactive behaviours). Today it is one mesh and a handful of markers, and nothing is gained. *(2026-10-09: the second `OrbitControls` copy turned out to be ~4 kB gzip and was removed by importing three-stdlib's — [0003](0003-idle-rendering-for-the-globe.md) D1. The globe also stops drawing at idle there, without R3F.)*
 - **Racks per hall exceed ~200** → `InstancedMesh` (today: ≤14 racks × 5 meshes).
 - **The app moves to React 19** → re-evaluate R3F 9 (check whether `<Canvas>` still registers everything).
 - **Gzip grows by another ~50 kB**, or R3F ships a fix for the registry coupling → re-measure D1.

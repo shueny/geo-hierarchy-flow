@@ -13,7 +13,8 @@ exports.launch = (extraArgs = []) =>
 
 // Count GL work per canvas: the globe keeps drawing behind the hall and must not pollute the hall's numbers.
 exports.GL_COUNTERS = () => {
-  window.__gl = { hall: { draws: 0 }, other: { draws: 0 } };
+  // renders = gl.clear calls: three clears once per frame it renders, so it counts frames drawn (draws counts work)
+  window.__gl = { hall: { draws: 0, renders: 0 }, other: { draws: 0, renders: 0 } };
   const bucket = (ctx) => (ctx.canvas && ctx.canvas.closest && ctx.canvas.closest(".hall-scene") ? window.__gl.hall : window.__gl.other);
   for (const Ctx of [window.WebGL2RenderingContext, window.WebGLRenderingContext]) {
     if (!Ctx) continue;
@@ -21,6 +22,8 @@ exports.GL_COUNTERS = () => {
       const orig = Ctx.prototype[fn];
       Ctx.prototype[fn] = function (...a) { bucket(this).draws++; return orig.apply(this, a); };
     }
+    const clear = Ctx.prototype.clear;
+    Ctx.prototype.clear = function (...a) { bucket(this).renders++; return clear.apply(this, a); };
   }
 };
 

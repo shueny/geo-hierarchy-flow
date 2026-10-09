@@ -3,6 +3,7 @@
 - **Status:** accepted, 2026-10-09
 - **Covers:** `.github/workflows/deploy.yml` (job `verify-hall`), `scripts/verify-hall/`
 - **Follows:** [0001](0001-react-three-fiber-for-3d-scenes.md) D9, which left the suite manual and named this as the next step.
+- **Later:** [0003](0003-idle-rendering-for-the-globe.md) renamed `scripts/verify-hall/` to `scripts/verify-3d/` and turned the job into `verify-3d` with a `hall` and a `globe` leg; names below are as of this decision.
 - **Process:** the loop in [`CLAUDE.md`](../../CLAUDE.md).
 
 ## Context

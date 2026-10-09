@@ -1,4 +1,4 @@
-// Interaction checks for the 3D hall.   usage: node scripts/verify-hall/suite.cjs <baseUrl>
+// Interaction checks for the 3D hall.   usage: node scripts/verify-3d/hall.cjs <baseUrl>
 // (npm run verify:hall builds nothing: run `npm run build` first; it serves dist/ and runs this.)
 //
 // Each check prints PASS/FAIL; the process exits 1 if any fails. Waits are on EXPECTED states
@@ -9,7 +9,7 @@ const path = require("node:path");
 const kit = require("./kit.cjs");
 
 const base = process.argv[2];
-if (!base) throw new Error("usage: suite.cjs <baseUrl>");
+if (!base) throw new Error("usage: hall.cjs <baseUrl>");
 const out = process.env.VERIFY_OUT || os.tmpdir();
 const results = [];
 // A failing check leaves a screenshot of the page it was about: in CI there is no way to look at the

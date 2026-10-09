@@ -35,13 +35,18 @@ jobs:
         with:
           path: dist
 
-  # Drives the 3D hall in a real browser (software GL): gestures, colours, hit-testing, idle
-  # rendering. Runs beside `build` so it adds its own duration to the pipeline, not the sum; it gates
-  # the deploy because the bugs it exists for are exactly the ones unit tests cannot see.
-  # Decision and numbers: docs/decisions/0002-ci-gate-for-the-3d-hall.md
-  verify-hall:
+  # Drives the 3D hall and the globe in a real browser (software GL): gestures, colours, hit-testing,
+  # idle rendering. One job per suite, in parallel with each other and with `build`; it gates the
+  # deploy because the bugs it exists for are exactly the ones unit tests cannot see.
+  # Decisions and numbers: docs/decisions/0002-ci-gate-for-the-3d-hall.md, 0003-idle-rendering-for-the-globe.md
+  verify-3d:
+    name: verify-3d (${{ matrix.suite }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [hall, globe]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -58,19 +63,19 @@ jobs:
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
       - run: npx playwright-core install --with-deps chromium
       - run: npm run build
-      - run: npm run verify:hall
+      - run: npm run verify:${{ matrix.suite }}
         env:
-          VERIFY_OUT: ${{ runner.temp }}/verify-hall # the `runner` context exists in steps, not in job-level env
+          VERIFY_OUT: ${{ runner.temp }}/verify-3d # the `runner` context exists in steps, not in job-level env
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: verify-hall-screenshots
-          path: ${{ runner.temp }}/verify-hall
+          name: verify-${{ matrix.suite }}-screenshots
+          path: ${{ runner.temp }}/verify-3d
           if-no-files-found: ignore
 
   deploy:
     if: github.ref == 'refs/heads/main'
-    needs: [build, verify-hall]
+    needs: [build, verify-3d]
     runs-on: ubuntu-latest
     environment:
       name: github-pages

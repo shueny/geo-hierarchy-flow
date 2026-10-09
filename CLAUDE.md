@@ -14,15 +14,18 @@ Run this loop before writing code for any choice of library, architecture or app
 
 ## Verifying 3D and pointer work
 
-Unit tests cannot see colour, hit-testing or camera state; two of the bugs in ADR 0001 passed every unit test. After touching `HallScene.jsx`, `hall3d/` or pointer handling:
+Unit tests cannot see colour, hit-testing or camera state; two of the bugs in ADR 0001 passed every unit test. After touching `HallScene.jsx`, `hall3d/` or pointer handling, run the hall suite; after touching `GlobeMap.jsx` (or anything that makes the globe change), the globe suite:
 
 ```
 npm run build && npm run verify:hall      # CHROMIUM_PATH=<path> when Playwright's own browser is absent
+npm run build && npm run verify:globe
 ```
 
-A bug that reaches a browser earns a check in `scripts/verify-hall/suite.cjs`. Waits there target the expected state (`kit.until`); a camera that has not started moving looks as still as one that has finished.
+A bug that reaches a browser earns a check in `scripts/verify-3d/hall.cjs` or `globe.cjs`. Waits there target the expected state (`kit.until`, `untilCond`, `quiet`); a camera that has not started moving looks as still as one that has finished.
 
-CI runs the same suite as the `verify-hall` job and the deploy waits for it; a red run uploads the `verify-hall-screenshots` artifact. Try workflow changes on a branch with `workflow_dispatch` — only `main` deploys. ADR 0002 has the numbers and says when to relax the gate.
+Both 3D scenes render on demand: the hall through R3F's `frameloop="demand"`, the globe through `wake()` in `GlobeMap.jsx` (ADR 0003). Anything new that changes what they draw must invalidate/wake, or the scene looks frozen.
+
+CI runs both as the `verify-3d` job (matrix: `hall`, `globe`) and the deploy waits for it; a red leg uploads `verify-<suite>-screenshots`. Try workflow changes on a branch with `workflow_dispatch` — only `main` deploys. ADR 0002 has the numbers and says when to relax the gate.
 
 ## Before changing the 3D hall
 

@@ -10,7 +10,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "verify:hall": "node scripts/verify-hall/run.cjs"
+    "verify:hall": "node scripts/verify-3d/run.cjs hall",
+    "verify:globe": "node scripts/verify-3d/run.cjs globe"
   },
   "dependencies": {
     "@react-three/drei": "^9.122.0",
@@ -20,6 +21,7 @@
     "react-dom": "^18.3.1",
     "react-use-measure": "^2.1.7",
     "three": "^0.169.0",
+    "three-stdlib": "^2.36.1",
     "topojson-client": "^3.1.0",
     "world-atlas": "^2.0.2"
   },
